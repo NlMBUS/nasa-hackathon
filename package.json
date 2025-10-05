@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@react-native-community/slider": "5.0.1",
+    "@react-native-picker/picker": "^2.11.2",
+    "axios": "^1.12.2",
     "bootstrap": "^5.3.8",
     "expo": "~54.0.12",
     "expo-status-bar": "~3.0.8",

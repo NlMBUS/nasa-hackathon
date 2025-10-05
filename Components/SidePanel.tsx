@@ -4,6 +4,12 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 import Globe, { GlobeRef } from './Globe';
 import { craterDepth, craterRadius, lethalDistance } from './Math';
 
+type Meteor = {
+  id: string;
+  name: string;
+  link: string;
+};
+
 export default function SelectorScreen() {
   const [impact, setImpact] = useState(false);
 const [latitudeStr, setLatitudeStr] = useState('0');
@@ -17,12 +23,15 @@ const [depth, setDepth] = useState(0);
 
   const globeRef = useRef<GlobeRef>(null);
 
-useEffect(() => {
-  if (!impact) {
-    console.log("A", impact)
-    globeRef.current?.injectJavaScript(`
-    if (window.showPreviewCylinder) {
-        window.showPreviewCylinder(${latitude}, ${longitude}, 50, 1);
+  // Show preview marker when lat/long changes
+  useEffect(() => {
+    if (!impact) {
+      globeRef.current?.injectJavaScript(`
+        if (window.showPreviewCylinder) {
+          window.showPreviewCylinder(${longitude}, ${latitude}, 90, 1);
+        }
+        true;
+      `);
     }
     true;
     `);
@@ -45,104 +54,142 @@ const handleLaunch = () => {
       if (window.removePreviewSphere) {
         window.removePreviewSphere();
       }
-      if (window.previewMesh) {
-        globe.scene().remove(window.previewMesh);
-        if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
-        if (window.previewMesh.material) window.previewMesh.material.dispose();
-        window.previewMesh = null;
+    };
+
+    fetchMeteors();
+  }, []);
+
+  // Fetch selected meteor's details
+  useEffect(() => {
+    const fetchMeteorDetails = async () => {
+      if (!selectedMeteor) return;
+      try {
+        const meteor = meteors.find(m => m.id === selectedMeteor);
+        if (!meteor) return;
+
+        const today = new Date();
+        const formattedDate = today.toISOString().split('T')[0];
+        console.log(formattedDate);
+
+        const res = await fetch(
+        `https://api.nasa.gov/neo/rest/v1/feed?start_date=${formattedDate}&end_date=${formattedDate}&api_key=d5sG616sal9PHsMGN9OupaZK4hB28sLQx3ywNdL3`
+        );
+        const data = await res.json();
+        // console.log(data.near_earth_objects["2025-10-05"][index]["estimated_diameter"]["meters"]["estimated_diameter_min"])
+        // console.log(data)
+        const diameterMin = data.near_earth_objects["2025-10-05"][index]["estimated_diameter"]["meters"]["estimated_diameter_min"];
+        const diameterMax = data.near_earth_objects["2025-10-05"][index]["estimated_diameter"]["meters"]["estimated_diameter_max"];
+        const velocity = data.near_earth_objects["2025-10-05"][index]["close_approach_data"][0]["relative_velocity"]["kilometers_per_second"];
+        setMeteorDiameter(`${diameterMin.toFixed(2)} - ${diameterMax.toFixed(2)} m`);
+        setMeteorDiameterValue((diameterMin+diameterMax)/2)
+        setMeteorVelocity(`${Number(velocity).toFixed(2)} km/s`);
+        setMeteorDiameterValue((diameterMin + diameterMax) / 2); // average diameter for dome size
+      } catch (error) {
+        console.error('Failed to fetch meteor details', error);
       }
-      true;
-    `);
-  } else {
-    // Reset: remove dome
-    globeRef.current?.injectJavaScript(`window.removeRedDome(); true;`);
-  }
+    };
 
-  setImpact(!impact);
-};
+    fetchMeteorDetails();
+  }, [selectedMeteor]);
 
-
-  const handleDiameterChange = (text: string) => {
-    const value = Number(text);
-    if (!isNaN(value)) setDiameter(value);
+  const handleLaunch = () => {
+    if (!impact) {
+      globeRef.current?.injectJavaScript(`
+        if (window.addRedDome) {
+          window.addRedDome(${longitude}, ${latitude}, ${meteorDiameterValue});
+        }
+        if (window.removePreviewSphere) {
+          window.removePreviewSphere();
+        }
+        if (window.previewMesh) {
+          globe.scene().remove(window.previewMesh);
+          if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
+          if (window.previewMesh.material) window.previewMesh.material.dispose();
+          window.previewMesh = null;
+        }
+        true;
+      `);
+    } else {
+      globeRef.current?.injectJavaScript(`window.removeRedDome(); true;`);
+    }
+    setImpact(!impact);
   };
 
-  const handleVelocityChange = (text: string) => {
+  const handleLatitudeChange = (text: string) => {
+    setLatitudeStr(text);
     const value = Number(text);
-    if (!isNaN(value)) setVelocity(value);
+    if (!isNaN(value) && value >= -90 && value <= 90) {
+      setLatitude(value);
+    }
   };
 
-const handleLatitudeChange = (text: string) => {
-  setLatitudeStr(text);
-  const value = Number(text);
-  if (!isNaN(value) && value >= -90 && value <= 90) {
-    setLatitude(value);
-  }
-};
-
-const handleLongitudeChange = (text: string) => {
-  setLongitudeStr(text);
-  const value = Number(text);
-  if (!isNaN(value) && value >= -180 && value <= 180) {
-    setLongitude(value);
-  }
-};
-
+  const handleLongitudeChange = (text: string) => {
+    setLongitudeStr(text);
+    const value = Number(text);
+    if (!isNaN(value) && value >= -180 && value <= 180) {
+      setLongitude(value);
+    }
+  };
 
   return (
     <View style={styles.container}>
-    <Globe ref={globeRef} />
-      <Text style={styles.label}>Diameter</Text>
-      <Slider
-        style={styles.slider}
-        minimumValue={0}
-        maximumValue={100}
-        step={1}
-        value={diameter}
-        onValueChange={setDiameter}
-        minimumTrackTintColor="#1EB1FC"
-        maximumTrackTintColor="#8ED1FC"
-        thumbTintColor="#007AFF"
-      />
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={diameter.toString()}
-          onChangeText={handleDiameterChange}
-        />
-      </View>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={velocity.toString()}
-          onChangeText={handleVelocityChange}
-        />
-      </View>
+      <Text style={styles.title}>Today's Meteor Forecast</Text>
+      <Globe ref={globeRef} />
+
+      <Text style={styles.label}>Select Meteor</Text>
+      {loading ? (
+        <Text>Loading meteors...</Text>
+      ) : (
+        <Picker
+            selectedValue={selectedMeteor}
+            onValueChange={(value, index) => {
+                setSelectedMeteor(value);
+                setIndex(index-1)
+                // index - 1 because the first item is the placeholder (“-- Select a Meteor --”)
+            }}
+            >
+            <Picker.Item label="-- Select a Meteor --" value="" />
+            {meteors.map((meteor) => (
+                <Picker.Item key={meteor.id} label={meteor.name} value={meteor.id} />
+            ))}
+            </Picker>
+      )}
+
+      {selectedMeteor !== '' && (
+        <View style={{ marginVertical: 10 }}>
+          <Text style={styles.infoText}>Diameter: {meteorDiameter}</Text>
+          <Text style={styles.infoText}>Velocity: {meteorVelocity}</Text>
+        </View>
+      )}
+
       <View style={{ flexDirection: 'row' }}>
-        <View style={{flex:1}}>
-            <Text style={styles.label}>Latitude</Text>
-<TextInput
-  style={styles.input}
-  keyboardType="default"
-  value={latitudeStr}
-  onChangeText={handleLatitudeChange}
-/>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Latitude</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="default"
+            value={latitudeStr}
+            onChangeText={handleLatitudeChange}
+          />
         </View>
-        <View style={{flex:1}}>
-            <Text style={styles.label}>Longitude</Text>
-<TextInput
-  style={styles.input}
-  keyboardType="default"
-  value={longitudeStr}
-  onChangeText={handleLongitudeChange}
-/>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Longitude</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="default"
+            value={longitudeStr}
+            onChangeText={handleLongitudeChange}
+          />
         </View>
       </View>
+
       <View style={{ marginTop: 16 }}>
-        <TouchableOpacity style={styles.button} onPress={handleLaunch}>
-          <Text style={styles.buttonText}>{impact ? "Reset":"Launch"}</Text>
+        <TouchableOpacity
+          style={[styles.button, { opacity: selectedMeteor ? 1 : 0.5 }]}
+          onPress={handleLaunch}
+          disabled={!selectedMeteor}
+        >
+          <Text style={styles.buttonText}>{impact ? 'Reset' : 'Launch'}</Text>
         </TouchableOpacity>
         <Text style={styles.label}>The crater's radius is {radius}km.</Text>
         <Text style={styles.label}>The crater's depth is {depth}km.</Text>
@@ -157,24 +204,16 @@ const styles = StyleSheet.create({
     width: '100%',
     flex: 1,
   },
+  title: {
+    textAlign: 'center',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 10,
+  },
   label: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 10,
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-    justifyContent: 'space-between',
-    marginHorizontal: 8,
-  },
-  valueText: {
-    fontSize: 16,
   },
   input: {
     borderColor: '#ccc',
@@ -186,7 +225,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: '#007AFF',
     padding: 10,
     borderRadius: 8,
     alignItems: 'center',
@@ -195,5 +234,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: 'white',
+  },
+  infoText: {
+    fontSize: 14,
+    marginBottom: 4,
   },
 });
