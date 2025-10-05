@@ -1,7 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import Slider from '@react-native-community/slider';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Globe, { GlobeRef } from './Globe';
+import { craterDepth, craterRadius, lethalDistance } from './Math';
 
 type Meteor = {
   id: string;
@@ -11,18 +12,14 @@ type Meteor = {
 
 export default function SelectorScreen() {
   const [impact, setImpact] = useState(false);
-  const [latitudeStr, setLatitudeStr] = useState('0');
-  const [longitudeStr, setLongitudeStr] = useState('0');
-  const [latitude, setLatitude] = useState(0);
-  const [longitude, setLongitude] = useState(0);
-  const [meteors, setMeteors] = useState<Meteor[]>([]);
-  const [selectedMeteor, setSelectedMeteor] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [index, setIndex] = useState(0);
-  // Meteor info
-  const [meteorDiameter, setMeteorDiameter] = useState<string>('');
-  const [meteorVelocity, setMeteorVelocity] = useState<string>('');
-  const [meteorDiameterValue, setMeteorDiameterValue] = useState<number>(50); // used for globe dome
+const [latitudeStr, setLatitudeStr] = useState('0');
+const [longitudeStr, setLongitudeStr] = useState('0');
+const [latitude, setLatitude] = useState(0);
+const [longitude, setLongitude] = useState(0);
+  const [diameter, setDiameter] = useState(50);
+  const [velocity, setVelocity] = useState(50); // separate state for second slider
+  const [radius, setRadius] = useState(0);
+const [depth, setDepth] = useState(0);
 
   const globeRef = useRef<GlobeRef>(null);
 
@@ -36,35 +33,26 @@ export default function SelectorScreen() {
         true;
       `);
     }
-  }, [latitude, longitude, impact]);
+    true;
+    `);
+  }
+}, [latitude, longitude, impact]);
 
-  // Fetch meteor list
-  useEffect(() => {
-    const fetchMeteors = async () => {
-      try {
-        const today = new Date();
-        const formattedDate = today.toISOString().split('T')[0];
-        console.log(formattedDate);
-
-        const res = await fetch(
-        `https://api.nasa.gov/neo/rest/v1/feed?start_date=${formattedDate}&end_date=${formattedDate}&api_key=d5sG616sal9PHsMGN9OupaZK4hB28sLQx3ywNdL3`
-        );
-        const data = await res.json();
-
-        const allMeteors: Meteor[] = Object.values(data.near_earth_objects)
-          .flat()
-          .map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            link: m.links.self,
-          }));
-
-        allMeteors.sort((a, b) => a.name.localeCompare(b.name));
-        setMeteors(allMeteors);
-      } catch (error) {
-        console.error('Failed to fetch meteors', error);
-      } finally {
-        setLoading(false);
+const handleLaunch = () => {
+  if (!impact) {
+    const shockwave = 2*lethalDistance("rock", diameter*1000, velocity); // or craterRadius if you prefer
+    console.log("Shockwave distance:", shockwave);
+    const radiusVal = craterRadius("rock",diameter*1000, velocity);
+    const depthVal = craterDepth("rock",diameter*1000, velocity);
+    setRadius(radiusVal);
+    setDepth(depthVal);
+    // Meteor impacts: add dome
+    globeRef.current?.injectJavaScript(`
+      if (window.addRedDome) {
+        window.addRedDome(${latitude}, ${longitude}, ${shockwave/1000});
+      }
+      if (window.removePreviewSphere) {
+        window.removePreviewSphere();
       }
     };
 
@@ -203,6 +191,8 @@ export default function SelectorScreen() {
         >
           <Text style={styles.buttonText}>{impact ? 'Reset' : 'Launch'}</Text>
         </TouchableOpacity>
+        <Text style={styles.label}>The crater's radius is {radius}km.</Text>
+        <Text style={styles.label}>The crater's depth is {depth}km.</Text>
       </View>
     </View>
   );
