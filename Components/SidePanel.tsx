@@ -1,4 +1,4 @@
-import Slider from '@react-native-community/slider';
+import { Picker } from '@react-native-picker/picker';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Globe, { GlobeRef } from './Globe';
@@ -20,11 +20,18 @@ const [longitude, setLongitude] = useState(0);
   const [velocity, setVelocity] = useState(50); // separate state for second slider
   const [radius, setRadius] = useState(0);
 const [depth, setDepth] = useState(0);
+const [index, setIndex] = useState(0);
+const [meteorDiameter, setMeteorDiameter] = useState<string>('');
+  const [meteorVelocity, setMeteorVelocity] = useState<string>('');
+  const [meteorDiameterValue, setMeteorDiameterValue] = useState<number>(50); // used for globe dome
+  const [selectedMeteor, setSelectedMeteor] = useState('');
+  const [meteors, setMeteors] = useState<Meteor[]>([]);
+const [loading, setLoading] = useState(true);
 
   const globeRef = useRef<GlobeRef>(null);
 
   // Show preview marker when lat/long changes
-  useEffect(() => {
+   useEffect(() => {
     if (!impact) {
       globeRef.current?.injectJavaScript(`
         if (window.showPreviewCylinder) {
@@ -33,26 +40,65 @@ const [depth, setDepth] = useState(0);
         true;
       `);
     }
-    true;
-    `);
-  }
-}, [latitude, longitude, impact]);
+  }, [latitude, longitude, impact]);
 
-const handleLaunch = () => {
-  if (!impact) {
-    const shockwave = 2*lethalDistance("rock", diameter*1000, velocity); // or craterRadius if you prefer
-    console.log("Shockwave distance:", shockwave);
-    const radiusVal = craterRadius("rock",diameter*1000, velocity);
-    const depthVal = craterDepth("rock",diameter*1000, velocity);
-    setRadius(radiusVal);
-    setDepth(depthVal);
-    // Meteor impacts: add dome
-    globeRef.current?.injectJavaScript(`
-      if (window.addRedDome) {
-        window.addRedDome(${latitude}, ${longitude}, ${shockwave/1000});
-      }
-      if (window.removePreviewSphere) {
-        window.removePreviewSphere();
+  const handleLaunch = () => {
+    if (!impact) {
+      const firstFour = meteorVelocity.slice(0, 4);  // "2025"
+      const finalVelocity = parseFloat(firstFour);
+      const shockwave = 2*lethalDistance("rock", meteorDiameterValue, finalVelocity); // or craterRadius if you prefer
+      console.log("Shockwave distance:", shockwave, meteorDiameterValue, finalVelocity);
+      const radiusVal = craterRadius("rock",meteorDiameterValue, finalVelocity);
+      const depthVal = craterDepth("rock",meteorDiameterValue, finalVelocity);
+      setRadius(radiusVal);
+      setDepth(depthVal);
+      globeRef.current?.injectJavaScript(`
+        if (window.addRedDome) {
+          window.addRedDome(${longitude}, ${latitude}, ${shockwave*2});
+        }
+        if (window.removePreviewSphere) {
+          window.removePreviewSphere();
+        }
+        if (window.previewMesh) {
+          globe.scene().remove(window.previewMesh);
+          if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
+          if (window.previewMesh.material) window.previewMesh.material.dispose();
+          window.previewMesh = null;
+        }
+        true;
+      `);
+    } else {
+      globeRef.current?.injectJavaScript(`window.removeRedDome(); true;`);
+    }
+    setImpact(!impact);
+  };
+
+  useEffect(() => {
+    const fetchMeteors = async () => {
+      try {
+        const today = new Date();
+        const formattedDate = today.toISOString().split('T')[0];
+        console.log(formattedDate);
+
+        const res = await fetch(
+        `https://api.nasa.gov/neo/rest/v1/feed?start_date=${formattedDate}&end_date=${formattedDate}&api_key=d5sG616sal9PHsMGN9OupaZK4hB28sLQx3ywNdL3`
+        );
+        const data = await res.json();
+
+        const allMeteors: Meteor[] = Object.values(data.near_earth_objects)
+          .flat()
+          .map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            link: m.links.self,
+          }));
+
+        allMeteors.sort((a, b) => a.name.localeCompare(b.name));
+        setMeteors(allMeteors);
+      } catch (error) {
+        console.error('Failed to fetch meteors', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -79,10 +125,10 @@ const handleLaunch = () => {
         // console.log(data)
         const diameterMin = data.near_earth_objects["2025-10-05"][index]["estimated_diameter"]["meters"]["estimated_diameter_min"];
         const diameterMax = data.near_earth_objects["2025-10-05"][index]["estimated_diameter"]["meters"]["estimated_diameter_max"];
-        const velocity = data.near_earth_objects["2025-10-05"][index]["close_approach_data"][0]["relative_velocity"]["kilometers_per_second"];
+        const incomingVelocity = data.near_earth_objects["2025-10-05"][index]["close_approach_data"][0]["relative_velocity"]["kilometers_per_second"];
         setMeteorDiameter(`${diameterMin.toFixed(2)} - ${diameterMax.toFixed(2)} m`);
         setMeteorDiameterValue((diameterMin+diameterMax)/2)
-        setMeteorVelocity(`${Number(velocity).toFixed(2)} km/s`);
+        setMeteorVelocity(`${Number(incomingVelocity).toFixed(2)} km/s`);
         setMeteorDiameterValue((diameterMin + diameterMax) / 2); // average diameter for dome size
       } catch (error) {
         console.error('Failed to fetch meteor details', error);
@@ -92,28 +138,28 @@ const handleLaunch = () => {
     fetchMeteorDetails();
   }, [selectedMeteor]);
 
-  const handleLaunch = () => {
-    if (!impact) {
-      globeRef.current?.injectJavaScript(`
-        if (window.addRedDome) {
-          window.addRedDome(${longitude}, ${latitude}, ${meteorDiameterValue});
-        }
-        if (window.removePreviewSphere) {
-          window.removePreviewSphere();
-        }
-        if (window.previewMesh) {
-          globe.scene().remove(window.previewMesh);
-          if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
-          if (window.previewMesh.material) window.previewMesh.material.dispose();
-          window.previewMesh = null;
-        }
-        true;
-      `);
-    } else {
-      globeRef.current?.injectJavaScript(`window.removeRedDome(); true;`);
-    }
-    setImpact(!impact);
-  };
+  // const handleLaunch = () => {
+  //   if (!impact) {
+  //     globeRef.current?.injectJavaScript(`
+  //       if (window.addRedDome) {
+  //         window.addRedDome(${longitude}, ${latitude}, ${meteorDiameterValue});
+  //       }
+  //       if (window.removePreviewSphere) {
+  //         window.removePreviewSphere();
+  //       }
+  //       if (window.previewMesh) {
+  //         globe.scene().remove(window.previewMesh);
+  //         if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
+  //         if (window.previewMesh.material) window.previewMesh.material.dispose();
+  //         window.previewMesh = null;
+  //       }
+  //       true;
+  //     `);
+  //   } else {
+  //     globeRef.current?.injectJavaScript(`window.removeRedDome(); true;`);
+  //   }
+  //   setImpact(!impact);
+  // };
 
   const handleLatitudeChange = (text: string) => {
     setLatitudeStr(text);
