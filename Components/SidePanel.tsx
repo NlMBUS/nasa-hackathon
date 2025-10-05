@@ -1,7 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Slider from '@react-native-community/slider';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Globe, { GlobeRef } from './Globe';
+import { craterDepth, craterRadius, lethalDistance } from './Math';
 
 export default function SelectorScreen() {
   const [impact, setImpact] = useState(false);
@@ -11,6 +12,9 @@ const [latitude, setLatitude] = useState(0);
 const [longitude, setLongitude] = useState(0);
   const [diameter, setDiameter] = useState(50);
   const [velocity, setVelocity] = useState(50); // separate state for second slider
+  const [radius, setRadius] = useState(0);
+const [depth, setDepth] = useState(0);
+
   const globeRef = useRef<GlobeRef>(null);
 
 useEffect(() => {
@@ -27,10 +31,16 @@ useEffect(() => {
 
 const handleLaunch = () => {
   if (!impact) {
+    const shockwave = 2*lethalDistance("rock", diameter*1000, velocity); // or craterRadius if you prefer
+    console.log("Shockwave distance:", shockwave);
+    const radiusVal = craterRadius("rock",diameter*1000, velocity);
+    const depthVal = craterDepth("rock",diameter*1000, velocity);
+    setRadius(radiusVal);
+    setDepth(depthVal);
     // Meteor impacts: add dome
     globeRef.current?.injectJavaScript(`
       if (window.addRedDome) {
-        window.addRedDome(${latitude}, ${longitude}, ${diameter});
+        window.addRedDome(${latitude}, ${longitude}, ${shockwave/1000});
       }
       if (window.removePreviewSphere) {
         window.removePreviewSphere();
@@ -134,6 +144,8 @@ const handleLongitudeChange = (text: string) => {
         <TouchableOpacity style={styles.button} onPress={handleLaunch}>
           <Text style={styles.buttonText}>{impact ? "Reset":"Launch"}</Text>
         </TouchableOpacity>
+        <Text style={styles.label}>The crater's radius is {radius}km.</Text>
+        <Text style={styles.label}>The crater's depth is {depth}km.</Text>
       </View>
     </View>
   );
