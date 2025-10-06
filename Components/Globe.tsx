@@ -1,4 +1,3 @@
-// Globe.tsx
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -31,7 +30,6 @@ const Globe = forwardRef<GlobeRef>((props, ref) => {
       <body>
         <div id="globeViz"></div>
         <script>
-          // helper to send debug -> React Native
           function postDebug(o) {
             try { window.ReactNativeWebView.postMessage(JSON.stringify(o)); } catch(e){ console.log('postDebug failed', e) }
           }
@@ -44,10 +42,8 @@ const Globe = forwardRef<GlobeRef>((props, ref) => {
           globe.controls().autoRotate = true;
           globe.controls().autoRotateSpeed = 0.5;
 
-          // lights (once)
           globe.onGlobeReady(() => {
             const scene = globe.scene();
-            // simple lighting so preview/dome are visible
             const ambient = new THREE.AmbientLight(0x999999, 0.6);
             scene.add(ambient);
             const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -57,58 +53,52 @@ const Globe = forwardRef<GlobeRef>((props, ref) => {
             postDebug({type: 'ready'});
           });
 
-          // consistent lat/lng -> XYZ used for both preview and dome
           function latLngToXYZ(lat, lng) {
             const R = globe.getGlobeRadius();
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lng + 180) * (Math.PI / 180);
 
-            // three-globe uses this coordinate convention for its points
             const x = -R * Math.sin(phi) * Math.cos(theta);
             const y = R * Math.cos(phi);
             const z = R * Math.sin(phi) * Math.sin(theta);
             return [x, y, z];
           }
 
-window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
-  try {
-    // Remove previous preview
-    if (window.previewMesh) {
-      globe.scene().remove(window.previewMesh);
-      if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
-      if (window.previewMesh.material) window.previewMesh.material.dispose();
-      window.previewMesh = null;
-    }
+          window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
+            try {
+              if (window.previewMesh) {
+                globe.scene().remove(window.previewMesh);
+                if (window.previewMesh.geometry) window.previewMesh.geometry.dispose();
+                if (window.previewMesh.material) window.previewMesh.material.dispose();
+                window.previewMesh = null;
+              }
 
-    const [x, y, z] = latLngToXYZ(lat, lng);
+              const [x, y, z] = latLngToXYZ(lat, lng);
 
-    // Create cylinder geometry
-    const geom = new THREE.CylinderGeometry(radius, radius, height, 32);
-    const mat = new THREE.MeshStandardMaterial({ 
-      color: 'red', 
-      transparent: true, 
-      opacity: 0.8, 
-      side: THREE.DoubleSide 
-    });
-    const mesh = new THREE.Mesh(geom, mat);
+              const geom = new THREE.CylinderGeometry(radius, radius, height, 32);
+              const mat = new THREE.MeshStandardMaterial({ 
+                color: 'red', 
+                transparent: true, 
+                opacity: 0.8, 
+                side: THREE.DoubleSide 
+              });
+              const mesh = new THREE.Mesh(geom, mat);
 
-    // Move cylinder so base sits on globe surface
-    mesh.position.set(x, y, z);
+              mesh.position.set(x, y, z);
 
-    // Orient cylinder along surface normal
-    const normal = new THREE.Vector3(x, y, z).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
-    mesh.quaternion.copy(quaternion);
+              const normal = new THREE.Vector3(x, y, z).normalize();
+              const up = new THREE.Vector3(0, 1, 0);
+              const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+              mesh.quaternion.copy(quaternion);
 
-    globe.scene().add(mesh);
-    window.previewMesh = mesh;
+              globe.scene().add(mesh);
+              window.previewMesh = mesh;
 
-    postDebug({ type: 'preview', lat, lng, pos: [x, y, z], radius: globe.getGlobeRadius() });
-  } catch (e) {
-    postDebug({ type: 'error', fn: 'showPreviewCylinder', e: String(e) });
-  }
-};
+              postDebug({ type: 'preview', lat, lng, pos: [x, y, z], radius: globe.getGlobeRadius() });
+            } catch (e) {
+              postDebug({ type: 'error', fn: 'showPreviewCylinder', e: String(e) });
+            }
+          };
 
 
           window.removePreviewSphere = function() {
@@ -121,10 +111,8 @@ window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
             postDebug({ type: 'preview-removed' });
           };
 
-          // DOME: larger, semi-transparent sphere (centered at same point)
           window.addRedDome = function(lat, lng, domeRadius = 2) {
             try {
-              // remove previous dome
               if (window.currentDome) {
                 globe.scene().remove(window.currentDome);
                 if (window.currentDome.geometry) window.currentDome.geometry.dispose();
@@ -134,8 +122,6 @@ window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
 
               const [x, y, z] = latLngToXYZ(lat, lng);
 
-              // create a FULL sphere so center is simple to reason about (they will overlap exactly)
-              // you can change to hemisphere later once alignment is good
               const geom = new THREE.SphereGeometry(domeRadius, 32, 16);
               const mat = new THREE.MeshStandardMaterial({
                 color: 'red',
@@ -166,7 +152,6 @@ window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
             postDebug({ type: 'dome-removed' });
           };
 
-          // small helper so pages can ask "are functions ready?"
           window._globeReady = false;
           globe.onGlobeReady(() => {
             window._globeReady = true;
@@ -176,16 +161,6 @@ window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
     </html>
   `;
 
-  // capture WebView messages so you can see the debug info in RN console
-  const handleMessage = (event: any) => {
-    try {
-      const d = JSON.parse(event.nativeEvent.data);
-      console.log('[WebView]', d);
-    } catch (e) {
-      console.log('[WebView] non-json message:', event.nativeEvent.data);
-    }
-  };
-
   return (
     <View style={styles.container}>
       <WebView
@@ -194,7 +169,6 @@ window.showPreviewCylinder = function(lat, lng, height = 20, radius = 0.6) {
         originWhitelist={['*']}
         source={{ html: htmlContent }}
         javaScriptEnabled={true}
-        onMessage={handleMessage}
       />
     </View>
   );
